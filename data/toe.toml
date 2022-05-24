@@ -1,0 +1,14 @@
+server = "souron.shire"
+address = "0.0.0.0"
+port = "79"
+user = "toe"
+group = "toe"
+root = "/srv/toe"
+chroot = true
+threads = 4
+
+[stats]
+users = true
+uptime = true
+kernel = true
+cpu = true
