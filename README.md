@@ -1,5 +1,6 @@
-# Contents
-==========
+# Toe
+Contents
+========
 * [Description](#description)
 * [Building](#building)
 * [Setting Up Users](#setting_up_users)

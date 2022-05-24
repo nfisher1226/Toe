@@ -1,0 +1,21 @@
+[Unit]
+Description=Toe finger server
+
+[Service]
+Type=simple
+User=toe
+Group=toe
+WorkingDirectory=/srv/toe/
+ExecStart=toe
+
+Restart=always
+RestartSec=1
+
+StandardOutput=syslog
+StandardError=syslog
+# adds a syslog identifier so you can have these logs filtered into
+# a separate file
+SyslogIdentifier=finger
+
+[Install]
+WantedBy=multi-user.target
