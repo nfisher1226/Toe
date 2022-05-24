@@ -3,8 +3,6 @@ Description=Toe finger server
 
 [Service]
 Type=simple
-User=toe
-Group=toe
 WorkingDirectory=/srv/toe/
 ExecStart=toe
 
