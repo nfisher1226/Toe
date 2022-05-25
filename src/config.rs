@@ -57,10 +57,7 @@ impl Config {
         let raw = fs::read_to_string("/etc/toe.toml")?;
         match toml::from_str(&raw) {
             Ok(c) => Ok(c),
-            Err(_) => Err(Error::new(
-                ErrorKind::Other, 
-                "Error decoding config file"
-            )),
+            Err(_) => Err(Error::new(ErrorKind::Other, "Error decoding config file")),
         }
     }
 

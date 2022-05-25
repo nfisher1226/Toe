@@ -1,4 +1,8 @@
-use std::{thread, num::NonZeroUsize, sync::{mpsc, Arc, Mutex}};
+use std::{
+    num::NonZeroUsize,
+    sync::{mpsc, Arc, Mutex},
+    thread,
+};
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -40,7 +44,8 @@ impl ThreadPool {
     }
 
     pub fn execute<F>(&self, f: F)
-    where F: FnOnce() + Send + 'static,
+    where
+        F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
         self.sender.send(Message::NewJob(job)).unwrap();
@@ -60,13 +65,16 @@ impl Worker {
                 Message::NewJob(job) => {
                     println!("Worker {} executing job.", id);
                     job();
-                },
+                }
                 Message::Terminate => {
                     println!("Worker {} shutting down.", id);
                     break;
-                },
+                }
             }
         });
-        Self { id, thread: Some(thread) }
+        Self {
+            id,
+            thread: Some(thread),
+        }
     }
 }
