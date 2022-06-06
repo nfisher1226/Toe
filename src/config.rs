@@ -1,3 +1,5 @@
+use std::env;
+
 use {
     serde::Deserialize,
     std::{
@@ -54,6 +56,8 @@ impl Default for Config {
 
 impl Config {
     pub fn load() -> Result<Self, Error> {
+        let args: Vec<String> = env::args().collect();
+        args.iter().for_each(|arg| { println!("Arg: {arg}"); });
         let raw = fs::read_to_string("/etc/toe.toml")?;
         match toml::from_str(&raw) {
             Ok(c) => Ok(c),
@@ -61,7 +65,7 @@ impl Config {
         }
     }
 
-    pub fn getpwnam(&self) -> Result<*mut libc::passwd, std::io::Error> {
+    pub fn getpwnam(&self) -> Result<*mut libc::passwd, Error> {
         let user = CString::new(self.user.as_bytes())?;
         let uid = unsafe { libc::getpwnam(user.as_ptr()) };
         if uid.is_null() {
@@ -71,7 +75,7 @@ impl Config {
         Ok(uid)
     }
 
-    pub fn getgrnam(&self) -> Result<*mut libc::group, std::io::Error> {
+    pub fn getgrnam(&self) -> Result<*mut libc::group, Error> {
         let group = CString::new(self.group.as_bytes())?;
         let gid = unsafe { libc::getgrnam(group.as_ptr()) };
         if gid.is_null() {
