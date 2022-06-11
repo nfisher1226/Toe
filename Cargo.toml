@@ -10,7 +10,7 @@ chrono = "0.4"
 lazy_static = "1.4"
 libc = "0.2"
 toml = "0.5"
-sysinfo = "0.23"
+sysinfo = "0.24"
 
 [dependencies.serde]
 version = "1.0"
