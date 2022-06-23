@@ -1,8 +1,7 @@
-use std::env;
-
 use {
     serde::Deserialize,
     std::{
+        env,
         ffi::CString,
         fs,
         io::{Error, ErrorKind},
@@ -57,7 +56,9 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Result<Self, Error> {
         let args: Vec<String> = env::args().collect();
-        args.iter().for_each(|arg| { println!("Arg: {arg}"); });
+        args.iter().for_each(|arg| {
+            println!("Arg: {arg}");
+        });
         let raw = fs::read_to_string("/etc/toe.toml")?;
         match toml::from_str(&raw) {
             Ok(c) => Ok(c),
