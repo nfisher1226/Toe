@@ -183,7 +183,7 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
         };
     } else {
         let mut path = PathBuf::from("/");
-        path.push(&request);
+        path.push(request);
         path.push(".plan");
         if path.exists() {
             let output = fs::read_to_string(path)?;
