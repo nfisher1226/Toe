@@ -7,8 +7,4 @@ root = "/srv/toe"
 chroot = true
 threads = 4
 
-[stats]
-users = true
-uptime = true
-kernel = true
-cpu = true
+stats = [ "Users", "Uptime", "Kernel", "Cpu" ]

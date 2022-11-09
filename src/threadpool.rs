@@ -63,11 +63,11 @@ impl Worker {
             let message = receiver.lock().unwrap().recv().unwrap();
             match message {
                 Message::NewJob(job) => {
-                    println!("Worker {} executing job.", id);
+                    println!("Worker {id} executing job.");
                     job();
                 }
                 Message::Terminate => {
-                    println!("Worker {} shutting down.", id);
+                    println!("Worker {id} shutting down.");
                     break;
                 }
             }

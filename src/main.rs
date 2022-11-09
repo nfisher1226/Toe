@@ -1,10 +1,11 @@
+#![warn(clippy::all, clippy::pedantic)]
 mod config;
 mod threadpool;
 mod time;
 
 use {
     chrono::Timelike,
-    config::Config,
+    config::{Config, Stats},
     lazy_static::lazy_static,
     std::{
         env,
@@ -70,30 +71,30 @@ fn server_info() -> Result<String, std::fmt::Error> {
     }
     write!(sysinfo, "\n\n")?;
     let mut sys = SYS.lock().unwrap();
-    if CONFIG.stats.kernel {
+    if CONFIG.stats.contains(&Stats::Kernel) {
         if let Some(name) = sys.name() {
-            write!(sysinfo, "{} ", &name)?;
+            write!(sysinfo, "{name} ")?;
         }
         if let Some(kern) = sys.kernel_version() {
-            write!(sysinfo, "{} ", &kern)?;
+            write!(sysinfo, "{kern} ")?;
         }
         if let Some(os) = sys.os_version() {
-            write!(sysinfo, "{} ", os)?;
+            write!(sysinfo, "{os} ")?;
         }
         write!(sysinfo, "\n\n")?;
     }
-    if CONFIG.stats.users {
+    if CONFIG.stats.contains(&Stats::Users) {
         write!(sysinfo, "Users: ")?;
         for path in &users() {
             if path.exists() {
                 if let Some(name) = path.to_string_lossy().split('/').nth(1) {
-                    write!(sysinfo, " {}", name)?;
+                    write!(sysinfo, " {name}")?;
                 }
             }
         }
         write!(sysinfo, "\n\n")?;
     }
-    if CONFIG.stats.uptime {
+    if CONFIG.stats.contains(&Stats::Uptime) {
         write!(sysinfo, "System Status\n-------------\n\n")?;
         sys.refresh_all();
         let current = chrono::Utc::now();
@@ -102,27 +103,26 @@ fn server_info() -> Result<String, std::fmt::Error> {
         let load = sys.load_average();
         write!(
             sysinfo,
-            "{:02}:{:02}:{:02} up {} days {:02}:{:02}, {} users, load average {} {} {}\n\n",
+            "{:02}:{:02}:{:02} up {} days {:02}:{:02}, {users} users, load average {} {} {}\n\n",
             current.hour(),
             current.minute(),
             current.second(),
             uptime.days(),
             uptime.hours(),
             uptime.minutes(),
-            users,
             load.one,
             load.five,
             load.fifteen,
         )?;
     }
-    if CONFIG.stats.cpu {
+    if CONFIG.stats.contains(&Stats::Cpu) {
         let mut components: Vec<&Component> = sys.components().iter().collect();
         components.iter().try_for_each(|x| {
-            if x.label().starts_with("Package") {
+            if x.label().starts_with("coretemp Core") {
                 writeln!(
                     sysinfo,
                     "{}: +{}°C  (max = +{}°C, critical = +{}°C)",
-                    &x.label(),
+                    &x.label().replace("coretemp ", ""),
                     &x.temperature(),
                     &x.max(),
                     &x.critical().unwrap_or_else(|| x.max()),
@@ -178,7 +178,7 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
             }
             Err(e) => {
                 eprintln!("{e}");
-                return Err(Error::new(ErrorKind::Other, format!("{}", e)));
+                return Err(Error::new(ErrorKind::Other, format!("{e}")));
             }
         };
     } else {
@@ -187,16 +187,17 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
         path.push(".plan");
         if path.exists() {
             let output = fs::read_to_string(path)?;
-            println!("Serving info for user {}.", &request);
-            _ = stream.write(format!("{}\n", &output).as_bytes())?;
+            println!("Serving info for user {request}.");
+            _ = stream.write(format!("{output}\n").as_bytes())?;
         } else {
-            eprintln!("Request for unknown user {}.", &request);
-            _ = stream.write(format!("{}'s not here man.\n", request).as_bytes())?;
+            eprintln!("Request for unknown user {request}.");
+            _ = stream.write(format!("{request}'s not here man.\n").as_bytes())?;
         }
     }
     Ok(())
 }
 
+#[allow(clippy::similar_names)]
 fn main() -> std::io::Result<()> {
     let uid = unsafe { libc::getuid() };
     let gid = unsafe { libc::getgid() };

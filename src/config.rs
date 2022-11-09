@@ -8,6 +8,7 @@ use {
     },
 };
 
+#[allow(clippy::unsafe_derive_deserialize)]
 #[derive(Deserialize)]
 pub struct Config {
     /// The name for this server
@@ -26,15 +27,15 @@ pub struct Config {
     pub chroot: bool,
     /// The number of worker threads used to server requests
     pub threads: usize,
-    pub stats: Stats,
+    pub stats: Vec<Stats>,
 }
 
-#[derive(Default, Deserialize)]
-pub struct Stats {
-    pub users: bool,
-    pub uptime: bool,
-    pub kernel: bool,
-    pub cpu: bool,
+#[derive(Deserialize, PartialEq)]
+pub enum Stats {
+    Users,
+    Uptime,
+    Kernel,
+    Cpu,
 }
 
 impl Default for Config {
@@ -48,7 +49,7 @@ impl Default for Config {
             root: String::from("/srv"),
             threads: 4,
             chroot: true,
-            stats: Stats::default(),
+            stats: vec![],
         }
     }
 }
@@ -56,9 +57,9 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Result<Self, Error> {
         let args: Vec<String> = env::args().collect();
-        args.iter().for_each(|arg| {
+        for arg in &args {
             println!("Arg: {arg}");
-        });
+        }
         let raw = fs::read_to_string("/etc/toe.toml")?;
         match toml::from_str(&raw) {
             Ok(c) => Ok(c),
