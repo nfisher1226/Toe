@@ -127,6 +127,15 @@ fn server_info() -> Result<String, std::fmt::Error> {
                     &x.max(),
                     &x.critical().unwrap_or_else(|| x.max()),
                 )
+            } else if x.label().starts_with("cpu_thermal temp") {
+                writeln!(
+                    sysinfo,
+                    "{}: +{}°C  (max = +{}°C, critical = +{}°C)",
+                    &x.label().replace("cpu_thermal temp", "Core "),
+                    &x.temperature(),
+                    &x.max(),
+                    &x.critical().unwrap_or_else(|| x.max()),
+                )
             } else {
                 Ok(())
             }
