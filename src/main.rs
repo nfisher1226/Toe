@@ -17,7 +17,8 @@ use {
         os::unix,
         path::PathBuf,
         process,
-        sync::Mutex,
+        sync::{mpsc::channel, Arc, Mutex},
+        thread,
     },
     sysinfo::{Component, ComponentExt, System, SystemExt},
     threadpool::ThreadPool,
@@ -64,108 +65,130 @@ fn users() -> Vec<PathBuf> {
     paths
 }
 
+fn kernel_info(mut sysinfo: String) -> Result<String, std::fmt::Error> {
+    let sys = SYS.lock().unwrap();
+    if let Some(name) = sys.name() {
+        write!(sysinfo, "{name} ")?;
+    }
+    if let Some(kern) = sys.kernel_version() {
+        write!(sysinfo, "{kern} ")?;
+    }
+    if let Some(os) = sys.os_version() {
+        write!(sysinfo, "{os} ")?;
+    }
+    write!(sysinfo, "\n\n")?;
+    Ok(sysinfo)
+}
+
+fn user_info(mut sysinfo: String) -> Result<String, std::fmt::Error> {
+    write!(sysinfo, "Users: ")?;
+    for path in &users() {
+        if path.exists() {
+            if let Some(name) = path.to_string_lossy().split('/').nth(1) {
+                write!(sysinfo, " {name}")?;
+            }
+        }
+    }
+    write!(sysinfo, "\n\n")?;
+    Ok(sysinfo)
+}
+
+fn uptime_info(mut sysinfo: String) -> Result<String, std::fmt::Error> {
+    let mut sys = SYS.lock().unwrap();
+    write!(sysinfo, "System Status\n-------------\n\n")?;
+    sys.refresh_all();
+    let current = chrono::Utc::now();
+    let uptime = Time::uptime(&sys);
+    let users = sys.users().len();
+    let load = sys.load_average();
+    write!(
+        sysinfo,
+        "{:02}:{:02}:{:02} up {} days {:02}:{:02}, {users} users, load average {} {} {}\n\n",
+        current.hour(),
+        current.minute(),
+        current.second(),
+        uptime.days(),
+        uptime.hours(),
+        uptime.minutes(),
+        load.one,
+        load.five,
+        load.fifteen,
+    )?;
+    Ok(sysinfo)
+}
+
+fn cpu_info(mut sysinfo: String) -> Result<String, std::fmt::Error> {
+    let sys = SYS.lock().unwrap();
+    let mut components: Vec<&Component> = sys.components().iter().collect();
+    components.iter().try_for_each(|x| {
+        if x.label().starts_with("coretemp Core") {
+            writeln!(
+                sysinfo,
+                "{}: +{}°C  (max = +{}°C, critical = +{}°C)",
+                &x.label().replace("coretemp ", ""),
+                &x.temperature(),
+                &x.max(),
+                &x.critical().unwrap_or_else(|| x.max()),
+            )
+        } else if x.label().starts_with("cpu_thermal temp") {
+            writeln!(
+                sysinfo,
+                "{}: +{}°C  (max = +{}°C, critical = +{}°C)",
+                &x.label().replace("cpu_thermal temp", "Core "),
+                &x.temperature(),
+                &x.max(),
+                &x.critical().unwrap_or_else(|| x.max()),
+            )
+        } else {
+            Ok(())
+        }
+    })?;
+    let mut cores = components.clone();
+    cores.retain(|x| x.label().starts_with("Core"));
+    if cores.is_empty() {
+        components.retain(|x| x.label().starts_with("CPU"));
+        components.iter().try_for_each(|x| {
+            writeln!(
+                sysinfo,
+                "{}:       +{}°C  (max = +{}°C, critical = +{}°C)",
+                &x.label(),
+                &x.temperature(),
+                &x.max(),
+                &x.critical().unwrap_or_else(|| x.max()),
+            )
+        })?;
+    } else {
+        cores.iter().try_for_each(|x| {
+            writeln!(
+                sysinfo,
+                "{}:       +{}°C  (max = +{}°C, critical = +{}°C)",
+                &x.label(),
+                &x.temperature(),
+                &x.max(),
+                &x.critical().unwrap_or_else(|| x.max()),
+            )
+        })?;
+    }
+    Ok(sysinfo)
+}
+
 fn server_info() -> Result<String, std::fmt::Error> {
     let mut sysinfo = format!("{}\n", CONFIG.server);
     for _ in 0..CONFIG.server.len() {
         write!(sysinfo, "=")?;
     }
     write!(sysinfo, "\n\n")?;
-    let mut sys = SYS.lock().unwrap();
     if CONFIG.stats.contains(&Stats::Kernel) {
-        if let Some(name) = sys.name() {
-            write!(sysinfo, "{name} ")?;
-        }
-        if let Some(kern) = sys.kernel_version() {
-            write!(sysinfo, "{kern} ")?;
-        }
-        if let Some(os) = sys.os_version() {
-            write!(sysinfo, "{os} ")?;
-        }
-        write!(sysinfo, "\n\n")?;
+        sysinfo = kernel_info(sysinfo)?;
     }
     if CONFIG.stats.contains(&Stats::Users) {
-        write!(sysinfo, "Users: ")?;
-        for path in &users() {
-            if path.exists() {
-                if let Some(name) = path.to_string_lossy().split('/').nth(1) {
-                    write!(sysinfo, " {name}")?;
-                }
-            }
-        }
-        write!(sysinfo, "\n\n")?;
+        sysinfo = user_info(sysinfo)?;
     }
     if CONFIG.stats.contains(&Stats::Uptime) {
-        write!(sysinfo, "System Status\n-------------\n\n")?;
-        sys.refresh_all();
-        let current = chrono::Utc::now();
-        let uptime = Time::uptime(&sys);
-        let users = sys.users().len();
-        let load = sys.load_average();
-        write!(
-            sysinfo,
-            "{:02}:{:02}:{:02} up {} days {:02}:{:02}, {users} users, load average {} {} {}\n\n",
-            current.hour(),
-            current.minute(),
-            current.second(),
-            uptime.days(),
-            uptime.hours(),
-            uptime.minutes(),
-            load.one,
-            load.five,
-            load.fifteen,
-        )?;
+        sysinfo = uptime_info(sysinfo)?;
     }
     if CONFIG.stats.contains(&Stats::Cpu) {
-        let mut components: Vec<&Component> = sys.components().iter().collect();
-        components.iter().try_for_each(|x| {
-            if x.label().starts_with("coretemp Core") {
-                writeln!(
-                    sysinfo,
-                    "{}: +{}°C  (max = +{}°C, critical = +{}°C)",
-                    &x.label().replace("coretemp ", ""),
-                    &x.temperature(),
-                    &x.max(),
-                    &x.critical().unwrap_or_else(|| x.max()),
-                )
-            } else if x.label().starts_with("cpu_thermal temp") {
-                writeln!(
-                    sysinfo,
-                    "{}: +{}°C  (max = +{}°C, critical = +{}°C)",
-                    &x.label().replace("cpu_thermal temp", "Core "),
-                    &x.temperature(),
-                    &x.max(),
-                    &x.critical().unwrap_or_else(|| x.max()),
-                )
-            } else {
-                Ok(())
-            }
-        })?;
-        let mut cores = components.clone();
-        cores.retain(|x| x.label().starts_with("Core"));
-        if cores.is_empty() {
-            components.retain(|x| x.label().starts_with("CPU"));
-            components.iter().try_for_each(|x| {
-                writeln!(
-                    sysinfo,
-                    "{}:       +{}°C  (max = +{}°C, critical = +{}°C)",
-                    &x.label(),
-                    &x.temperature(),
-                    &x.max(),
-                    &x.critical().unwrap_or_else(|| x.max()),
-                )
-            })?;
-        } else {
-            cores.iter().try_for_each(|x| {
-                writeln!(
-                    sysinfo,
-                    "{}:       +{}°C  (max = +{}°C, critical = +{}°C)",
-                    &x.label(),
-                    &x.temperature(),
-                    &x.max(),
-                    &x.critical().unwrap_or_else(|| x.max()),
-                )
-            })?;
-        }
+        sysinfo = cpu_info(sysinfo)?;
     }
     Ok(sysinfo)
 }
@@ -240,15 +263,32 @@ fn main() -> std::io::Result<()> {
     }
     println!("Starting up thread pool");
     let threads = NonZeroUsize::new(CONFIG.threads).unwrap();
-    let pool = ThreadPool::new(threads);
+    let pool = Arc::new(Mutex::new(ThreadPool::new(threads)));
     println!("Priviledges dropped, listening for incoming connections.");
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
-        pool.execute(|| {
-            if let Err(e) = handle_connection(stream) {
-                eprintln!("{e}");
+    {
+        let pool = Arc::clone(&pool);
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let stream = stream.unwrap();
+                if let Ok(pool) = pool.try_lock() {
+                    pool.execute(|| {
+                        if let Err(e) = handle_connection(stream) {
+                            eprintln!("{e}");
+                        }
+                    });
+                }
             }
         });
+    }
+    let (tx, rx) = channel();
+    ctrlc::set_handler(move || {
+        tx.send(()).expect("Cannot send termination signal");
+    })
+    .expect("Cannot set signal handler");
+    rx.recv()
+        .expect("Could not receive message through channel");
+    if let Ok(mut pool) = pool.try_lock() {
+        pool.shutdown();
     }
     Ok(())
 }

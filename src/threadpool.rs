@@ -50,6 +50,20 @@ impl ThreadPool {
         let job = Box::new(f);
         self.sender.send(Message::NewJob(job)).unwrap();
     }
+
+    pub fn shutdown(&mut self) {
+        println!("Sending terminate message to all workers");
+        for _ in &self.workers {
+            self.sender.send(Message::Terminate).unwrap();
+        }
+        println!("Shutting down all workers");
+        for worker in &mut self.workers {
+            println!("Shutting down worker {}", worker.id);
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
+    }
 }
 
 pub struct Worker {
@@ -67,7 +81,7 @@ impl Worker {
                     job();
                 }
                 Message::Terminate => {
-                    println!("Worker {id} shutting down.");
+                    println!("Dropping worker {id}.");
                     break;
                 }
             }
